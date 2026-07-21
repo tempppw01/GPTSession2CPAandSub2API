@@ -65,3 +65,7 @@ docs/index.html
 ```
 
 所有解析和转换都在浏览器本地完成，不上传 token，不写入本地存储。
+
+## Railway 部署
+
+仓库已包含 `Dockerfile`，Railway 会用 Nginx 提供 `docs/` 下的静态页面。创建服务时保持根目录为仓库根目录，并使用默认的 Dockerfile 构建即可；不需要设置 Build Command 或 Start Command。
