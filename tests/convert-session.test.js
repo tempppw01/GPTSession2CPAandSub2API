@@ -57,7 +57,7 @@ function loadPageScript() {
   assert.ok(match, "expected docs/index.html to contain one inline script");
 
   const elements = new Map();
-  const formatButtons = ["sub2api", "cpa", "cockpit", "9router", "codex", "axonhub", "codexmanager"].map((format) =>
+  const formatButtons = ["sub2api", "cpa", "cockpit", "9router", "codex", "axonhub", "codexmanager", "grok2api"].map((format) =>
     createFakeElement(`[data-format="${format}"]`, { dataset: { format } })
   );
 
@@ -438,6 +438,54 @@ function testCodexManagerAuthJsonPreservesRealRefreshAndMetadata() {
   assert.equal(authJson.meta.chatgpt_account_id, "chatgpt-account-1");
 }
 
+function testGrok2apiBuildAccountMatchesTheReferenceShape() {
+  const { elements, formatButtons } = loadPageScript();
+  const grok2apiButton = formatButtons.find((button) => button.dataset.format === "grok2api");
+  const input = elements.get("#session-input");
+  const output = elements.get("#output");
+  const expiresAt = "2026-08-06T14:29:36Z";
+  const accessToken = jwtWithPayload({
+    client_id: "grok-client-id",
+    sub: "grok-user-id",
+    principal_id: "ignored-principal-id",
+    team_id: "ignored-team-id",
+    scope: "ignored:scope",
+    exp: Date.parse(expiresAt) / 1000,
+  });
+
+  dispatch(grok2apiButton, "click");
+  input.value = JSON.stringify({
+    type: "xai",
+    auth_kind: "oauth",
+    access_token: accessToken,
+    refresh_token: "grok-refresh-token",
+    token_type: "Bearer",
+    expired: expiresAt,
+    email: "grok@example.com",
+    id_token: "source-id-token-is-not-used",
+  });
+  dispatch(input, "input");
+
+  assert.deepEqual(JSON.parse(output.value), {
+    accounts: [{
+      provider: "grok_build",
+      name: "grok@example.com",
+      client_id: "grok-client-id",
+      access_token: accessToken,
+      refresh_token: "grok-refresh-token",
+      id_token: "",
+      token_type: "Bearer",
+      scope: "",
+      expires_at: "2026-08-06T14:29:36.000Z",
+      expires_in: 0,
+      email: "grok@example.com",
+      user_id: "grok-user-id",
+      principal_id: "",
+      team_id: "",
+    }],
+  });
+}
+
 testSub2apiAccountUsesAccessTokenExpiry();
 testSub2apiAccountsUseTheirOwnAccessTokenExpiry();
 testSub2apiAccountWithRefreshTokenOmitsAccessTokenExpiry();
@@ -448,4 +496,5 @@ testCodexAuthJsonMatchesNativeShapeWhenMissingRefreshToken();
 testCodexAuthJsonPreservesRealRefreshTokenAndIdToken();
 testCodexManagerAuthJsonUsesEmptyRefreshTokenWhenMissing();
 testCodexManagerAuthJsonPreservesRealRefreshAndMetadata();
+testGrok2apiBuildAccountMatchesTheReferenceShape();
 console.log("convert-session tests passed");

@@ -158,7 +158,7 @@
 
       .segmented {
         display: inline-grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
+        grid-template-columns: repeat(8, minmax(0, 1fr));
         width: min(760px, 100%);
         padding: 4px;
         border: 1px solid var(--line);
@@ -636,6 +636,7 @@
             <span>Codex</span>
             <span>AxonHub</span>
             <span>Codex-Manager</span>
+            <span>Grok2API</span>
           </div>
         </div>
         <div class="meta-row" aria-label="处理方式">
@@ -666,6 +667,7 @@
           <button type="button" data-format="codex" aria-pressed="false">Codex</button>
           <button type="button" data-format="axonhub" aria-pressed="false">AxonHub</button>
           <button type="button" data-format="codexmanager" aria-pressed="false">Codex-Manager</button>
+          <button type="button" data-format="grok2api" aria-pressed="false">Grok2API</button>
         </div>
         <div class="actions">
           <button class="button button-secondary" id="copy-output" type="button" disabled>复制输出</button>
@@ -678,7 +680,7 @@
           <div class="panel-head">
             <div>
               <h2 id="input-title">Session JSON</h2>
-              <p>粘贴 ChatGPT Web session，或拖入一个或多个 JSON 文件。</p>
+              <p>粘贴 ChatGPT Web session 或 xAI OAuth JSON，或拖入一个或多个 JSON 文件。</p>
             </div>
           </div>
           <div class="panel-body">
@@ -785,6 +787,7 @@
           codex: "Codex",
           axonhub: "AxonHub",
           codexmanager: "Codex-Manager",
+          grok2api: "Grok2API",
         };
 
         const state = {
@@ -1013,6 +1016,40 @@
           }
 
           return new Date(expiresMs - 60 * 60 * 1000).toISOString();
+        }
+
+        function buildGrok2apiAccount(record, values) {
+          const isXaiOAuth = record.type === "xai" && record.auth_kind === "oauth";
+          if (!isXaiOAuth) {
+            return undefined;
+          }
+
+          const clientId = firstNonEmpty(values.payload?.client_id);
+          const userId = firstNonEmpty(values.payload?.sub);
+          const expiresAt = firstNonEmpty(
+            normalizeTimestamp(record.expired),
+            values.payload ? timestampFromUnixSeconds(values.payload.exp) : undefined,
+          );
+          if (!values.accessToken || !values.email || !clientId || !userId || !expiresAt) {
+            return undefined;
+          }
+
+          return {
+            provider: "grok_build",
+            name: values.email,
+            client_id: clientId,
+            access_token: values.accessToken,
+            refresh_token: values.refreshToken || "",
+            id_token: "",
+            token_type: firstNonEmpty(record.token_type, "Bearer"),
+            scope: "",
+            expires_at: expiresAt,
+            expires_in: 0,
+            email: values.email,
+            user_id: userId,
+            principal_id: "",
+            team_id: "",
+          };
         }
 
         function stripUnavailable(value) {
@@ -1305,6 +1342,12 @@
             ? buildSyntheticCodexIdToken(email, accountId, planType, userId, expiresAt)
             : undefined;
           const idToken = firstNonEmpty(inputIdToken, syntheticIdToken);
+          const grok2apiAccount = buildGrok2apiAccount(record, {
+            accessToken,
+            refreshToken,
+            email,
+            payload,
+          });
 
           const cpa = Object.fromEntries(Object.entries({
             type: "codex",
@@ -1442,6 +1485,7 @@
             codexAuthJson,
             axonHub,
             codexManager,
+            grok2apiAccount,
             sub2apiAccount,
           };
         }
@@ -1451,6 +1495,14 @@
             exported_at: normalizeTimestamp(now),
             proxies: [],
             accounts: converted.map((item) => item.sub2apiAccount),
+          };
+        }
+
+        function buildGrok2apiDocument(converted) {
+          return {
+            accounts: converted
+              .map((item) => item.grok2apiAccount)
+              .filter((account) => account !== undefined),
           };
         }
 
@@ -1494,6 +1546,10 @@
             return state.converted.length === 1
               ? state.converted[0].codexManager
               : state.converted.map((item) => item.codexManager);
+          }
+
+          if (state.format === "grok2api") {
+            return buildGrok2apiDocument(state.converted);
           }
 
           return buildSub2apiDocument(state.converted, now);
